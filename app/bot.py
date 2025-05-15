@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 import os
 from datetime import datetime
 from app.config import BOT_TOKEN, SAVE_DIRECTORY
-from app import qr_utils
+from app import qr_processor
 import traceback
 
 # Enable logging
@@ -35,6 +35,9 @@ Session = sessionmaker(bind=engine)
 # Create save directory if it doesn't exist
 SAVE_DIR = os.path.join(os.path.dirname(__file__), SAVE_DIRECTORY)
 os.makedirs(SAVE_DIR, exist_ok=True)
+
+# Создаем экземпляр QR процессора
+qr_processor_instance = qr_processor.QrProcessor()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
@@ -102,10 +105,10 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         success = False
         if file_name.lower().endswith('.pdf'):
             logger.info("Начинаю обработку PDF файла...")
-            success = qr_utils.process_pdf(save_path, qr_content, output_path)
+            success = qr_processor_instance.process_pdf(save_path, qr_content, output_path)
         else:
             logger.info("Начинаю обработку изображения...")
-            success = qr_utils.add_qr_to_image(save_path, qr_content, output_path)
+            success = qr_processor_instance.add_qr_to_image(save_path, qr_content, output_path)
         
         if success:
             # Save QR code information
