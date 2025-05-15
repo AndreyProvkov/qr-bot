@@ -1,0 +1,5 @@
+stamp
+text
+dimension
+frame
+empty_space 

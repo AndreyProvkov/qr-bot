@@ -1,0 +1,15 @@
+batch: 16
+data: dataset_yolo/dataset.yaml
+device: cpu
+epochs: 100
+exist_ok: true
+imgsz: 640
+lr0: 0.001
+lrf: 0.01
+model: yolov5s.pt
+momentum: 0.937
+name: exp
+optimizer: AdamW
+patience: 50
+project: runs/train
+weight_decay: 0.0005
