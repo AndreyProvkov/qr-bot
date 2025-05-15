@@ -1,0 +1,14 @@
+__pycache__
+dataset/
+dataset_yolo/
+dataset_yolo_small/
+test_images
+test_labeling
+venv
+downloads
+visualization
+runs
+yolov5
+bot.log
+documents.db
+app/config.py
