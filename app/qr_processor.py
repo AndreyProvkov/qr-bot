@@ -6,10 +6,11 @@ from PIL import Image
 import qrcode
 from pdf2image import convert_from_path
 from PyPDF2 import PdfReader, PdfWriter
-from .yolo_detector import YOLODetector
+import pytesseract
 import tempfile
 import shutil
 import gc
+from .yolo_detector import YOLODetector
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
@@ -30,6 +31,21 @@ class QrProcessor:
                 logger.error(f"Ошибка при инициализации YOLO детектора: {str(e)}", exc_info=True)
                 raise
         return self.detector
+
+    def extract_text_from_image(self, image):
+        """Извлекает текст из изображения с помощью OCR"""
+        try:
+            # Конвертируем в оттенки серого для лучшего распознавания
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            # Применяем адаптивную пороговую обработку
+            thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                         cv2.THRESH_BINARY, 11, 2)
+            # Распознаем текст
+            text = pytesseract.image_to_string(thresh, lang='rus+eng')
+            return text.strip()
+        except Exception as e:
+            logger.error(f"Ошибка при извлечении текста: {str(e)}", exc_info=True)
+            return ""
 
     def generate_qr_code(self, content, size=150):
         """Генерирует QR-код с заданным содержимым"""
@@ -116,9 +132,10 @@ class QrProcessor:
 
     def add_qr_to_image(self, image_path: str, qr_content: str, output_path: str) -> bool:
         """
-        Добавляет QR-код на изображение, используя YOLOv5 для определения места размещения
+        Добавляет QR-код на изображение, сохраняя текстовый слой
         """
         try:
+            # Загружаем изображение
             if image_path.lower().endswith('.pdf'):
                 images = convert_from_path(image_path)
                 if not images:
@@ -128,12 +145,23 @@ class QrProcessor:
             else:
                 base_img = Image.open(image_path)
 
-            width, height = base_img.size
+            # Конвертируем в numpy array для OCR
+            img_array = np.array(base_img)
+            img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+            
+            # Извлекаем текст с помощью OCR
+            page_text = self.extract_text_from_image(img_array)
+            
+            # Добавляем распознанный текст в содержимое QR-кода
+            enhanced_qr_content = f"{qr_content}\n\nРаспознанный текст:\n{page_text[:500]}..."  # Ограничиваем длину текста
 
-            qr_img = self.generate_qr_code(qr_content).resize((150, 150))
-
+            # Генерируем QR-код
+            qr_img = self.generate_qr_code(enhanced_qr_content).resize((150, 150))
+            
+            # Создаем белый фон для QR-кода
             white_bg = Image.new('RGB', (150, 150), 'white')
 
+            # Находим место для QR-кода
             detector = self.get_detector()
             position = detector.find_empty_space(image_path)
             if position is None:
@@ -143,14 +171,17 @@ class QrProcessor:
                 return False
 
             x, y = position
+            width, height = base_img.size
 
             if x < 0 or y < 0 or x + 150 > width or y + 150 > height:
                 logger.warning("QR-код вышел за границы изображения")
                 return False
 
+            # Накладываем QR-код
             base_img.paste(white_bg, (x, y))
             base_img.paste(qr_img, (x, y))
 
+            # Сохраняем результат
             base_img.save(output_path)
             return True
         except Exception as e:
