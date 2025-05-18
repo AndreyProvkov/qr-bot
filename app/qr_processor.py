@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 import qrcode
 from pdf2image import convert_from_path
-from PyPDF2 import PdfReader
+from PyPDF2 import PdfReader, PdfWriter
 from .yolo_detector import YOLODetector
 import tempfile
 import shutil
@@ -159,43 +159,54 @@ class QrProcessor:
 
     def process_pdf(self, pdf_path: str, qr_content_template: str, output_path: str, dpi: int = 300) -> bool:
         """
-        Обрабатывает PDF файл, добавляя QR-код на каждую страницу
+        Обрабатывает PDF файл, добавляя QR-код на каждую страницу и сохраняя текстовый слой
         """
         try:
             logger.info(f"Начинаем обработку PDF файла: {pdf_path}")
-            num_pages = len(PdfReader(pdf_path).pages)
+            
+            # Открываем исходный PDF для сохранения текстового слоя
+            reader = PdfReader(pdf_path)
+            writer = PdfWriter()
+            num_pages = len(reader.pages)
             logger.info(f"Всего страниц: {num_pages}")
 
             with tempfile.TemporaryDirectory(prefix="qr_pdf_") as temp_dir:
                 processed_images = []
 
-                for i in range(1, num_pages + 1):
-                    logger.info(f"Обработка страницы {i} из {num_pages}")
-                    images = convert_from_path(pdf_path, dpi=dpi, first_page=i, last_page=i)
+                for i in range(num_pages):
+                    logger.info(f"Обработка страницы {i+1} из {num_pages}")
+                    
+                    # Конвертируем страницу в изображение
+                    images = convert_from_path(pdf_path, dpi=dpi, first_page=i+1, last_page=i+1)
                     if not images:
-                        logger.error(f"Не удалось конвертировать страницу {i}")
+                        logger.error(f"Не удалось конвертировать страницу {i+1}")
                         return False
                     img = images[0]
 
-                    temp_img_path = os.path.join(temp_dir, f"temp_page_{i}.png")
+                    # Сохраняем временное изображение
+                    temp_img_path = os.path.join(temp_dir, f"temp_page_{i+1}.png")
                     img.save(temp_img_path, "PNG")
 
-                    page_qr_content = qr_content_template + f"\nСтраница: {i} из {num_pages}"
-                    processed_img_path = os.path.join(temp_dir, f"processed_page_{i}.png")
+                    # Добавляем QR-код
+                    page_qr_content = qr_content_template + f"\nСтраница: {i+1} из {num_pages}"
+                    processed_img_path = os.path.join(temp_dir, f"processed_page_{i+1}.png")
 
                     ok = self.add_qr_to_image(temp_img_path, page_qr_content, processed_img_path)
                     if not ok:
-                        logger.error(f"Не удалось добавить QR-код на страницу {i}")
+                        logger.error(f"Не удалось добавить QR-код на страницу {i+1}")
                         return False
 
                     processed_images.append(processed_img_path)
 
+                    # Копируем текстовый слой из исходного PDF
+                    writer.add_page(reader.pages[i])
+
                     del img, temp_img_path, processed_img_path
                     gc.collect()
 
-                logger.info("Собираем обработанные страницы обратно в PDF...")
-                images = [Image.open(p).convert('RGB') for p in processed_images]
-                images[0].save(output_path, save_all=True, append_images=images[1:])
+                # Сохраняем PDF с текстовым слоем
+                with open(output_path, 'wb') as output_file:
+                    writer.write(output_file)
 
                 logger.info(f"PDF успешно обработан и сохранен: {output_path}")
                 return True
